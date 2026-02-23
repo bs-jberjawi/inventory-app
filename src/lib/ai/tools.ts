@@ -17,8 +17,9 @@ function getSupabase() {
 export const searchInventorySchema = z.object({
   query: z
     .string()
+    .optional()
     .describe(
-      'Search term — product name, SKU, keyword, or description text (e.g., "laptop", "ELEC-001", "ergonomic")'
+      'Search term — product name, SKU, keyword, or description text (e.g., "laptop", "ELEC-001", "ergonomic"). Omit to list all items matching the other filters.'
     ),
   category: z
     .string()

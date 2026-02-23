@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bell, Check } from "lucide-react";
+import { Bell, Check, X, Filter } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Notification } from "@/lib/types/database";
 import { formatDistanceToNow } from "date-fns";
@@ -17,9 +17,14 @@ import { formatDistanceToNow } from "date-fns";
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const [showUnreadOnly, setShowUnreadOnly] = useState(true);
   const supabase = createClient();
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const visibleNotifications = showUnreadOnly
+    ? notifications.filter((n) => !n.read)
+    : notifications;
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -27,7 +32,7 @@ export function NotificationBell() {
         .from("notifications")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(50);
       if (data) setNotifications(data as Notification[]);
     };
 
@@ -57,6 +62,16 @@ export function NotificationBell() {
     );
   };
 
+  const dismissNotification = async (
+    e: React.MouseEvent,
+    id: string
+  ) => {
+    e.stopPropagation();
+    // Mark as read and remove from local state
+    await supabase.from("notifications").update({ read: true }).eq("id", id);
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
   const markAllRead = async () => {
     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
     if (unreadIds.length === 0) return;
@@ -82,28 +97,55 @@ export function NotificationBell() {
       <PopoverContent align="end" className="w-80 p-0">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h4 className="text-sm font-semibold">Notifications</h4>
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-1">
             <Button
-              variant="ghost"
+              variant={showUnreadOnly ? "secondary" : "ghost"}
               size="sm"
-              className="h-auto text-xs"
-              onClick={markAllRead}
+              className="h-7 text-xs px-2"
+              onClick={() => setShowUnreadOnly(!showUnreadOnly)}
+              title={showUnreadOnly ? "Show all" : "Show unread only"}
             >
-              <Check className="mr-1 h-3 w-3" />
-              Mark all read
+              <Filter className="mr-1 h-3 w-3" />
+              {showUnreadOnly ? "Unread" : "All"}
             </Button>
-          )}
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2"
+                onClick={markAllRead}
+              >
+                <Check className="mr-1 h-3 w-3" />
+                Read all
+              </Button>
+            )}
+          </div>
         </div>
-        <ScrollArea className="max-h-80">
-          {notifications.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              No notifications yet
+        <ScrollArea className="h-[320px]">
+          {visibleNotifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[280px] text-muted-foreground">
+              <Bell className="h-8 w-8 mb-2 opacity-30" />
+              <p className="text-sm">
+                {showUnreadOnly
+                  ? "No unread notifications"
+                  : "No notifications yet"}
+              </p>
+              {showUnreadOnly && notifications.length > 0 && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-1 text-xs"
+                  onClick={() => setShowUnreadOnly(false)}
+                >
+                  View all notifications
+                </Button>
+              )}
             </div>
           ) : (
-            notifications.map((n) => (
+            visibleNotifications.map((n) => (
               <div
                 key={n.id}
-                className={`flex items-start gap-3 border-b px-4 py-3 cursor-pointer hover:bg-accent transition-colors ${
+                className={`group flex items-start gap-3 border-b px-4 py-3 cursor-pointer hover:bg-accent transition-colors ${
                   !n.read ? "bg-accent/50" : ""
                 }`}
                 onClick={() => !n.read && markAsRead(n.id)}
@@ -124,6 +166,15 @@ export function NotificationBell() {
                     })}
                   </p>
                 </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => dismissNotification(e, n.id)}
+                  title="Dismiss"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
             ))
           )}
