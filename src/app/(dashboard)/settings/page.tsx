@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -55,17 +55,13 @@ interface UserInfo {
 
 export default function SettingsPage() {
   const { role, user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>("manager");
   const [inviting, setInviting] = useState(false);
-
-  // Redirect non-admins
-  if (!authLoading && role !== "admin") {
-    redirect("/");
-  }
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -88,6 +84,18 @@ export default function SettingsPage() {
       fetchUsers();
     }
   }, [role, fetchUsers]);
+
+  // Redirect non-admins via effect to avoid breaking Rules of Hooks
+  useEffect(() => {
+    if (!authLoading && role !== "admin") {
+      router.replace("/");
+    }
+  }, [authLoading, role, router]);
+
+  // Show nothing while auth is loading or redirecting non-admins
+  if (authLoading || role !== "admin") {
+    return null;
+  }
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;

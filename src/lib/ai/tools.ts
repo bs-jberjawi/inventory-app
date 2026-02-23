@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import type { UserRole } from "@/lib/types/database";
 
 // Service-role Supabase client for AI agent — bypasses RLS for cross-cutting analytics
 function getSupabase() {
@@ -390,13 +391,33 @@ export const inventoryTools = {
 
   update_stock_threshold: tool({
     description:
-      "Update the minimum stock level (reorder point) for a product. IMPORTANT: Always analyze stock movements first using get_stock_movements before recommending a threshold. Include your reasoning in the 'reason' parameter.",
+      "Update the minimum stock level (reorder point) for a product. IMPORTANT: Always analyze stock movements first using get_stock_movements before recommending a threshold. Include your reasoning in the 'reason' parameter. Requires admin or manager role.",
     inputSchema: updateStockThresholdSchema,
     execute: async ({ product_id, new_threshold, reason }) => {
-      const supabase = getSupabase();
+      // Defense-in-depth: verify role even if this tool shouldn't be
+      // reachable for viewers (the route strips it from the tool set)
+      const { createClient: createServerSupabase } = await import(
+        "@/lib/supabase/server"
+      );
+      const supabase = await createServerSupabase();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const callerRole: UserRole =
+        (user?.app_metadata?.role as UserRole) || "viewer";
+
+      if (callerRole !== "admin" && callerRole !== "manager") {
+        return {
+          error:
+            "Permission denied. Only admins and managers can update stock thresholds.",
+        };
+      }
+
+      const serviceClient = getSupabase();
 
       // Get current product info
-      const { data: before } = await supabase
+      const { data: before } = await serviceClient
         .from("products")
         .select("name, sku, min_stock_level, quantity")
         .eq("id", product_id)
@@ -404,7 +425,7 @@ export const inventoryTools = {
 
       if (!before) return { error: "Product not found" };
 
-      const { data, error } = await supabase
+      const { data, error } = await serviceClient
         .from("products")
         .update({ min_stock_level: Math.round(new_threshold) })
         .eq("id", product_id)
@@ -423,3 +444,20 @@ export const inventoryTools = {
     },
   }),
 };
+
+// ---------------------------------------------------------------------------
+// Role-gated tool sets — viewers only get read-only tools
+// ---------------------------------------------------------------------------
+
+type InventoryTools = typeof inventoryTools;
+
+export function getToolsForRole(role: UserRole): InventoryTools {
+  if (role === "admin" || role === "manager") {
+    return inventoryTools;
+  }
+
+  // Viewers: strip all write tools
+  const { update_stock_threshold: _removed, ...readOnlyTools } =
+    inventoryTools;
+  return readOnlyTools as unknown as InventoryTools;
+}
