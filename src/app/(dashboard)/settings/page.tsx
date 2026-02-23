@@ -279,7 +279,7 @@ export default function SettingsPage() {
                     <TableCell>
                       <div>
                         <p className="font-medium">
-                          {u.full_name || "Pending"}
+                          {u.full_name || (u.email_confirmed_at ? u.email : "Pending")}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {u.email}
